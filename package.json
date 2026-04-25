@@ -1,0 +1,17 @@
+{
+  "name": "notifications-api",
+  "version": "1.0.0",
+  "description": "ID Portal – Benachrichtigungsdienst",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.6.0",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
