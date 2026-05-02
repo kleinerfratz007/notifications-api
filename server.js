@@ -1,8 +1,30 @@
 'use strict';
+// Lädt Secrets aus .env (CWD = /root/id-portal/api). Optional — wenn dotenv fehlt, übernimmt PM2/Shell.
+try { require('dotenv').config(); } catch (_) { /* dotenv optional */ }
+
 const express = require('express');
 const Database = require('better-sqlite3');
-const { randomUUID } = require('crypto');
+const { randomUUID, timingSafeEqual } = require('crypto');
 const nodemailer = require('nodemailer');
+
+// Fail-fast: Production darf NIE ohne diese Werte starten.
+if (process.env.NODE_ENV === 'production') {
+  const required = ['CONFIG_ENCRYPTION_KEY', 'CONFIG_SERVICE_TOKEN', 'NOTIFICATIONS_SERVICE_TOKEN', 'MAIL_PASSWORD'];
+  const missing = required.filter(k => !process.env[k]);
+  if (missing.length) {
+    console.error('[FATAL] Missing required env vars in production:', missing.join(', '));
+    process.exit(1);
+  }
+}
+
+// Konstantzeitiger Token-Vergleich gegen Timing-Attacks.
+function safeTokenEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ba = Buffer.from(a, 'utf8');
+  const bb = Buffer.from(b, 'utf8');
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
+}
 
 // ── Email-Transport (SMTP) ────────────────────────────────────────────────
 // Mail-Whitelist: Notifications gehen NUR an Adressen, die in MAIL_WHITELIST stehen.
@@ -471,7 +493,7 @@ async function cfgTestProvider(providerKey) {
 // ── Middleware: Service-Token (für interne Service-zu-Service Calls) ───────
 function requireServiceToken(req, res, next) {
   const token = req.headers['x-service-token'];
-  if (!CONFIG_SERVICE_TOKEN || token === CONFIG_SERVICE_TOKEN) return next();
+  if (!CONFIG_SERVICE_TOKEN || safeTokenEqual(token, CONFIG_SERVICE_TOKEN)) return next();
   res.status(403).json({ error: 'Service-Token ungültig.' });
 }
 
@@ -718,7 +740,7 @@ app.post('/api/notifications/preferences', authenticate, (req, res) => {
 // Wenn user-pref=OFF -> 200 mit "skipped:disabled".
 app.post('/api/notifications/send', (req, res) => {
   const token = req.headers['x-service-token'];
-  if (!SERVICE_TOKEN || token !== SERVICE_TOKEN) {
+  if (!SERVICE_TOKEN || !safeTokenEqual(token, SERVICE_TOKEN)) {
     return res.status(403).json({ error: 'Invalid service token' });
   }
   const { recipientUsername, sourceApp, subject, body, refUrl } = req.body || {};
@@ -783,7 +805,7 @@ const ADMIN_ALLOWED_TYPES = {
 
 function adminTokenCheck(req, res) {
   const token = req.headers['x-service-token'];
-  if (!SERVICE_TOKEN || token !== SERVICE_TOKEN) {
+  if (!SERVICE_TOKEN || !safeTokenEqual(token, SERVICE_TOKEN)) {
     res.status(403).json({ error: 'Invalid service token' });
     return false;
   }

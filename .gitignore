@@ -4,3 +4,6 @@ node_modules/
 *.db-wal
 .env
 .env.local
+.env.production
+.env.prod
+.env.bak*
